@@ -103,27 +103,56 @@ class CLI extends WP_CLI_Command {
   * [--network]
   * : Clean the fieldgroups in all the sites in the network
   *
+  * [--files]
+  * : clean existing generated files (first step to generate only existing fields groups, useful on an automated deploy process)
+  *
+  * [--database]
+  * : clean database fields and fieldsgroups
+  *
   * @subcommand clean
   *
   */
   function clean( $args, $assoc_args ) {
     extract( $assoc_args );
 
-    $field_groups = \ACFWPCLI\FieldGroup::all();
-    $fields       = \ACFWPCLI\Field::all();
+    if(!isset($database) && !isset($files)) {
+        WP_CLI::warning("Please specify --files or -database option.");
+    }
+    // Delete fields group on system
+    if(isset($database) && $database) {
+      $field_groups = \ACFWPCLI\FieldGroup::all();
+      $fields = \ACFWPCLI\Field::all();
 
-    if ( empty( $field_groups[0] ) && empty( $fields ) ) {
-      WP_CLI::warning( 'No field groups or fields found to clean up.' );
+      if (empty($field_groups[0]) && empty($fields)) {
+          WP_CLI::warning('No field groups or fields found to clean up.');
+      }
+
+      foreach ($fields as $field) {
+          \ACFWPCLI\Field::destroy($field->ID);
+      }
+
+      foreach ($field_groups as $field_group) {
+          \ACFWPCLI\FieldGroup::destroy($field_group->ID);
+          WP_CLI::success("Removed field group: {$field_group->post_title}");
+      }
     }
 
-    foreach ( $fields as $field ) {
-      \ACFWPCLI\Field::destroy( $field->ID );
+    // Delete files
+    if(isset($files) && $files) {
+        $patterns = [];
+        foreach ( $this->paths as $key => $value ) {
+            $patterns[ $key ] = trailingslashit( $value ) . '*.json';
+        }
+
+        foreach ( $patterns as $pattern ) {
+            foreach (glob($pattern) as $file) {
+                unlink($file);
+                WP_CLI::success("File $file removed.");
+            }
+        }
     }
 
-    foreach ( $field_groups as $field_group ) {
-      \ACFWPCLI\FieldGroup::destroy( $field_group->ID );
-      WP_CLI::success( "Removed field group: {$field_group->post_title}" );
-    }
+    // Delete files in all path
   }
 
   /**
@@ -143,7 +172,9 @@ class CLI extends WP_CLI_Command {
   function import( $args, $assoc_args ) {
     extract( $assoc_args );
 
-    if ( isset( $json_file ) ) {
+    if( isset($all) ) {
+      $choice = $all;
+    } else if ( isset( $json_file ) ) {
       $choice = \ACFWPCLI\CLIUtils::expand_tilde( $json_file );
     } else {
       $choice = $this->menu_choice_import_field_group();
