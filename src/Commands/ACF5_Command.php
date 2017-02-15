@@ -150,6 +150,8 @@ class ACF5_Command extends WP_CLI_Command {
   * [--url=<siteurl>]
   * : Pretend request came from given URL. In multisite, this argument is how the target site is specified.
   *
+  * [--files_only]
+  * : in a single site POV, clean only existing generated files (first step to generate only existing fields groups, useful on a automated deploy process)
   * @subcommand clean
   *
   */
@@ -169,25 +171,31 @@ class ACF5_Command extends WP_CLI_Command {
         switch_to_blog( $blog['blog_id'] );
       }
 
-      $field_groups = get_posts( array(
-          'numberposts' =>  -1,
-          'post_type'   =>  array( 'acf-field-group', 'acf', 'acf-field' ),
-          'sort_column' => 'menu_order',
-          'order'       => 'ASC',
-        ) );
+      // Delete fields group on system
+      if(!isset($files_only) || !$files_only) {
+          $field_groups = get_posts( array(
+              'numberposts' =>  -1,
+              'post_type'   =>  array( 'acf-field-group', 'acf', 'acf-field' ),
+              'sort_column' => 'menu_order',
+              'order'       => 'ASC',
+          ) );
 
-      if ( empty( $field_groups ) ) {
-        WP_CLI::warning( 'No fieldgroups found to clean up for ' . get_site_url() );
+          if ( empty( $field_groups ) ) {
+              WP_CLI::warning( 'No fieldgroups found to clean up for ' . get_site_url() );
+          }
+
+          foreach ( $field_groups as $group ) {
+              global $wpdb;
+
+              $wpdb->query( "DELETE FROM {$wpdb->postmeta} WHERE post_id = {$group->ID}" );
+              $wpdb->query( "DELETE FROM {$wpdb->posts} WHERE ID = {$group->ID}" );
+
+              WP_CLI::success( "Cleaned up {$group->post_type}: \"{$group->post_title}\"" );
+          }
       }
 
-      foreach ( $field_groups as $group ) {
-        global $wpdb;
-
-        $wpdb->query( "DELETE FROM {$wpdb->postmeta} WHERE post_id = {$group->ID}" );
-        $wpdb->query( "DELETE FROM {$wpdb->posts} WHERE ID = {$group->ID}" );
-
-        WP_CLI::success( "Cleaned up {$group->post_type}: \"{$group->post_title}\"" );
-      }
+      // Delete files in path
+        die(var_dump($this->paths));
 
       if ( $network ) {
         restore_current_blog();
